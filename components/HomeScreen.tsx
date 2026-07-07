@@ -157,7 +157,7 @@ export default function HomeScreen({
       />
 
       <div id="log-input">
-        <FoodInput userId={userId} onLogged={handleLogged} />
+        <FoodInput userId={userId} language={currentLanguage} onLogged={handleLogged} />
       </div>
 
       <WaterTracker glasses={waterGlasses} target={waterTarget} onChange={handleWaterChange} />
