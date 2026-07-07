@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
+import OnboardingFlow from "@/components/OnboardingFlow";
 
-export default async function RootPage() {
+export default async function OnboardingPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -17,5 +18,9 @@ export default async function RootPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  redirect(profile?.onboarded ? "/home" : "/onboarding");
+  if (profile?.onboarded) {
+    redirect("/home");
+  }
+
+  return <OnboardingFlow userId={user.id} email={user.email ?? null} />;
 }

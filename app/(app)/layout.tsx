@@ -1,7 +1,11 @@
 import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 
-export default async function RootPage() {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -17,5 +21,9 @@ export default async function RootPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  redirect(profile?.onboarded ? "/home" : "/onboarding");
+  if (!profile?.onboarded) {
+    redirect("/onboarding");
+  }
+
+  return <>{children}</>;
 }

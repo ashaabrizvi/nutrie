@@ -25,10 +25,19 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // Refreshes the Supabase session cookie on every request.
-  // Route-level auth gating (redirect to /login) is added in Phase 1
-  // once the login page exists.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  const isPublicRoute =
+    pathname.startsWith("/login") || pathname.startsWith("/auth/callback");
+
+  if (!user && !isPublicRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
 
   return response;
 }
