@@ -1,0 +1,14 @@
+{
+  "name": "Nutrie",
+  "short_name": "Nutrie",
+  "description": "Your smart nutrition coach",
+  "theme_color": "#00D37F",
+  "background_color": "#0A0A0A",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "/home",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

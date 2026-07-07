@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface2: #1c1c1c;
+  --border: #262626;
+  --accent: #00d37f;
+  --accent2: #ff6b35;
+  --accent3: #7c6af7;
+  --text: #f5f2ee;
+  --muted: #6b6966;
+  --muted2: #2a2a2a;
+  --yellow: #ffd166;
+  --red: #ff4d4d;
+  --green: #00d37f;
+  --blue: #4da8da;
+
+  --radius-card: 20px;
+  --radius-input: 14px;
+  --radius-button: 12px;
+  --radius-pill: 999px;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent2: var(--accent2);
+  --color-accent3: var(--accent3);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-muted2: var(--muted2);
+  --color-yellow: var(--yellow);
+  --color-red: var(--red);
+  --color-green: var(--green);
+  --color-blue: var(--blue);
+
+  --radius-card: var(--radius-card);
+  --radius-input: var(--radius-input);
+  --radius-button: var(--radius-button);
+  --radius-pill: var(--radius-pill);
+
+  --font-heading: var(--font-syne);
+  --font-body: var(--font-jakarta);
+  --font-mono: var(--font-dm-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+}
+
+.watermark {
+  position: fixed;
+  bottom: 8px;
+  right: 12px;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.4;
+  pointer-events: none;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+}
