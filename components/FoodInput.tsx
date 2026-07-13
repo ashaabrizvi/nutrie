@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
-import { mockAnalyze } from "@/lib/mock-analyze";
 import { getTodayIST, getISTHour } from "@/lib/date";
 import NutrieMessage from "@/components/ui/NutrieMessage";
 import type { AnalyzeResponse, FoodLog, MealType, NutritionAnalysis } from "@/types";
@@ -25,9 +24,11 @@ type Status = "idle" | "loading" | "done";
 
 export default function FoodInput({
   userId,
+  language,
   onLogged,
 }: {
   userId: string;
+  language: "en" | "hi";
   onLogged: (log: FoodLog) => void;
 }) {
   const supabase = createClient();
@@ -43,11 +44,26 @@ export default function FoodInput({
     setStatus("loading");
     setResult(null);
 
-    // Simulates request latency until /api/analyze exists (Phase 3).
-    await new Promise((r) => setTimeout(r, 700));
-    const analysis = mockAnalyze(input);
-    setResult(analysis);
-    setStatus("done");
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input, mealType, userId, language }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Analysis failed");
+      }
+
+      const analysis = (await res.json()) as AnalyzeResponse;
+      setResult(analysis);
+      setStatus("done");
+    } catch (err) {
+      setStatus("idle");
+      setNotice(err instanceof Error ? err.message : "Something went wrong — try again.");
+      setTimeout(() => setNotice(null), 3000);
+    }
   }
 
   async function handleAdd(nutrition: NutritionAnalysis) {
