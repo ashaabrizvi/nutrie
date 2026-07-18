@@ -8,7 +8,15 @@ const MEAL_EMOJI: Record<string, string> = {
   snack: "🍎",
 };
 
-export default function LogItem({ log }: { log: FoodLog }) {
+export default function LogItem({
+  log,
+  onEdit,
+  onDelete,
+}: {
+  log: FoodLog;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   const time = formatDisplayTime(new Date(log.logged_at));
 
   return (
@@ -27,7 +35,29 @@ export default function LogItem({ log }: { log: FoodLog }) {
           </p>
         </div>
       </div>
-      <span className="font-mono text-sm text-accent">{log.calories}</span>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-sm text-accent">{log.calories}</span>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Edit entry"
+            className="text-sm text-muted"
+          >
+            ✏️
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Delete entry"
+            className="text-sm text-muted"
+          >
+            🗑️
+          </button>
+        )}
+      </div>
     </div>
   );
 }

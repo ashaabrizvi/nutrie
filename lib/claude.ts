@@ -227,3 +227,59 @@ function parseClaudeResponse(raw: string): AnalyzeResponse {
 
   return { type: "analysis", text, nutrition, confidence };
 }
+
+/**
+ * Used by the log screen's "Re-analyse" action: the user has typed a new
+ * calorie value for an existing log and wants the macros recalculated to
+ * match, rather than a fresh from-scratch analysis.
+ */
+export async function reanalyzeWithCorrection(
+  rawInput: string,
+  newCalories: number,
+  originalNutrition: NutritionAnalysis,
+  language: "en" | "hi",
+): Promise<NutritionAnalysis> {
+  try {
+    const message = await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `User's preferred language: ${language === "hi" ? "Hindi" : "English"}\n\nUser said: "${rawInput}"\nThey are correcting the calories to ${newCalories} kcal (originally estimated at ${originalNutrition.calories} kcal). Recalculate protein, carbs, and fat proportionally to match this new calorie value. You must respond with an analysis (type: "analysis") — do not ask a clarifying question here.`,
+        },
+      ],
+    });
+
+    const raw = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n");
+
+    const result = parseClaudeResponse(raw);
+    if (result.type === "analysis") {
+      return { ...result.nutrition, calories: newCalories };
+    }
+  } catch (err) {
+    console.error("Re-analyse failed, falling back to linear scaling", err);
+  }
+
+  return scaleNutritionLinearly(originalNutrition, newCalories);
+}
+
+function scaleNutritionLinearly(
+  original: NutritionAnalysis,
+  newCalories: number,
+): NutritionAnalysis {
+  const factor = original.calories > 0 ? newCalories / original.calories : 1;
+  return {
+    calories: newCalories,
+    protein: Math.round(original.protein * factor),
+    carbs: Math.round(original.carbs * factor),
+    fat: Math.round(original.fat * factor),
+    fiber: Math.round(original.fiber * factor),
+    items: original.items,
+    confidence: "medium",
+  };
+}
