@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { saveUserMemory } from "@/lib/memory";
 import { getTodayIST, getISTHour } from "@/lib/date";
 import NutrieMessage from "@/components/ui/NutrieMessage";
-import type { AnalyzeResponse, FoodLog, MealType, NutritionAnalysis } from "@/types";
+import type { AnalyzeResponse, ClarificationRound, FoodLog, MealType, NutritionAnalysis } from "@/types";
 
 const MEAL_CHIPS: { meal: MealType; emoji: string; label: string }[] = [
   { meal: "breakfast", emoji: "🌅", label: "Breakfast" },
@@ -36,37 +37,64 @@ export default function FoodInput({
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [conversationHistory, setConversationHistory] = useState<ClarificationRound[]>([]);
   const [saving, setSaving] = useState(false);
+  const [clarifying, setClarifying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  function showNotice(message: string, duration = 3000) {
+    setNotice(message);
+    setTimeout(() => setNotice(null), duration);
+  }
+
+  async function callAnalyze(history: ClarificationRound[]) {
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input, mealType, userId, language, conversationHistory: history }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? "Analysis failed");
+    }
+
+    return (await res.json()) as AnalyzeResponse;
+  }
 
   async function handleAnalyse() {
     if (!input.trim()) return;
     setStatus("loading");
     setResult(null);
+    setConversationHistory([]);
 
     try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, mealType, userId, language }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Analysis failed");
-      }
-
-      const analysis = (await res.json()) as AnalyzeResponse;
+      const analysis = await callAnalyze([]);
       setResult(analysis);
       setStatus("done");
     } catch (err) {
       setStatus("idle");
-      setNotice(err instanceof Error ? err.message : "Something went wrong — try again.");
-      setTimeout(() => setNotice(null), 3000);
+      showNotice(err instanceof Error ? err.message : "Something went wrong — try again.");
     }
   }
 
-  async function handleAdd(nutrition: NutritionAnalysis) {
+  async function handleClarify(answer: string) {
+    if (!result || result.type !== "clarification") return;
+    const nextHistory = [...conversationHistory, { question: result.question, answer }];
+    setClarifying(true);
+
+    try {
+      const analysis = await callAnalyze(nextHistory);
+      setConversationHistory(nextHistory);
+      setResult(analysis);
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : "Something went wrong — try again.");
+    } finally {
+      setClarifying(false);
+    }
+  }
+
+  async function handleAdd(nutrition: NutritionAnalysis, wasEdited: boolean) {
     setSaving(true);
 
     const { data, error } = await supabase
@@ -83,26 +111,33 @@ export default function FoodInput({
         fat_g: nutrition.fat,
         fiber_g: nutrition.fiber,
         items: nutrition.items,
-        ai_response: result?.text ?? null,
+        ai_response: result?.type === "analysis" ? result.text : null,
         confidence: nutrition.confidence,
+        is_edited: wasEdited,
         log_date: getTodayIST(),
       })
       .select()
       .single();
 
-    setSaving(false);
-
     if (!error && data) {
       onLogged(data as FoodLog);
+
+      if (wasEdited) {
+        await saveUserMemory(supabase, userId, input.trim(), nutrition);
+        showNotice("I'll remember this for next time ✓");
+      }
+
       setInput("");
       setResult(null);
+      setConversationHistory([]);
       setStatus("idle");
     }
+
+    setSaving(false);
   }
 
   function showComingSoon(feature: string) {
-    setNotice(`${feature} logging arrives in Phase 5.`);
-    setTimeout(() => setNotice(null), 2000);
+    showNotice(`${feature} logging arrives in Phase 5.`, 2000);
   }
 
   return (
@@ -168,10 +203,11 @@ export default function FoodInput({
       {status === "done" && result && (
         <div className="mt-4">
           <NutrieMessage
-            text={result.text}
-            nutrition={result.nutrition}
+            result={result}
             onAdd={handleAdd}
+            onClarify={handleClarify}
             saving={saving}
+            clarifying={clarifying}
           />
         </div>
       )}
