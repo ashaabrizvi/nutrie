@@ -123,8 +123,38 @@ export interface NutritionAnalysis {
   confidence: Confidence;
 }
 
-export interface AnalyzeResponse {
+export interface AnalysisResult {
+  type: "analysis";
   text: string;
   nutrition: NutritionAnalysis;
   confidence: Confidence;
+  fromMemory?: boolean;
+}
+
+export interface ClarificationResult {
+  type: "clarification";
+  question: string;
+  options: string[];
+}
+
+export type AnalyzeResponse = AnalysisResult | ClarificationResult;
+
+export interface ClarificationRound {
+  question: string;
+  answer: string;
+}
+
+export interface UserMemory {
+  id: string;
+  user_id: string;
+  trigger_phrase: string;
+  normalized_phrase: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  context: string | null;
+  times_logged: number;
+  last_confirmed: string;
+  created_at: string;
 }

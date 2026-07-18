@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { AnalyzeResponse, Confidence, NutritionAnalysis } from "@/types";
+import type {
+  AnalyzeResponse,
+  ClarificationRound,
+  Confidence,
+  NutritionAnalysis,
+} from "@/types";
 
 const SYSTEM_PROMPT = `You are NUTRIE — a smart Indian nutrition coach AI.
 You understand Hindi, English, and Hinglish perfectly.
@@ -53,14 +58,38 @@ RESPONSE RULES:
 - Be warm, like a nutritionist friend
 - Never judge food choices
 - Be specific — mention foods you estimated
-- If vague input → estimate and mention it
 - 2-3 sentences maximum in response text
 
+CLARIFICATION:
+When input is too vague to estimate with reasonable confidence (confidence
+would otherwise be "low"), ask ONE clarifying question instead of guessing —
+but only if you have not already asked the maximum of 2 questions for this
+food log (the conversation so far tells you how many you've asked).
+- Ask exactly one question, with 2-3 short tappable options
+- Examples:
+  "thali khaya" → "Dhaba or home style?" options: ["Dhaba", "Home style", "Restaurant"]
+  "kuch khaya" → "Can you be more specific?" options: ["Snack", "Full meal", "Just a drink"]
+  "lunch kiya" → "What did you have for lunch?" options: ["Dal chawal", "Roti sabzi", "Something else"]
+- Never ask more than 2 questions total for the same food log
+- If you have already asked 2 questions (or the conversation tells you this
+  is the final round), you MUST give your best estimate instead — do not
+  ask a third question under any circumstances
+
 OUTPUT FORMAT:
-Write response text first (2-3 sentences).
-Then on a new line, output ONLY this JSON (no backticks,
-no markdown, raw JSON only):
+There are two possible outputs. Never output both.
+
+1. Clarifying question — raw JSON only (no backticks, no markdown, no other
+   text before or after):
 {
+  "type": "clarification",
+  "question": "",
+  "options": ["", "", ""]
+}
+
+2. Nutrition estimate — write response text first (2-3 sentences), then on
+   a new line output ONLY this JSON (no backticks, no markdown, raw JSON only):
+{
+  "type": "analysis",
   "calories": 0,
   "protein": 0,
   "carbs": 0,
@@ -96,17 +125,34 @@ function getClient(): Anthropic {
 export async function analyzeFoodWithClaude(
   input: string,
   language: "en" | "hi",
+  conversationHistory: ClarificationRound[] = [],
+  forceFinal = false,
 ): Promise<AnalyzeResponse> {
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: "user",
+      content: `User's preferred language: ${language === "hi" ? "Hindi" : "English"}\n\n${input}`,
+    },
+  ];
+
+  for (const round of conversationHistory) {
+    messages.push({ role: "assistant", content: round.question });
+    messages.push({ role: "user", content: round.answer });
+  }
+
+  if (forceFinal) {
+    messages.push({
+      role: "user",
+      content:
+        "You have already asked the maximum of 2 clarifying questions. Give your best nutrition estimate now (type: analysis) — do not ask another question.",
+    });
+  }
+
   const message = await getClient().messages.create({
     model: MODEL,
     max_tokens: 600,
     system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `User's preferred language: ${language === "hi" ? "Hindi" : "English"}\n\n${input}`,
-      },
-    ],
+    messages,
   });
 
   const raw = message.content
@@ -114,7 +160,35 @@ export async function analyzeFoodWithClaude(
     .map((block) => block.text)
     .join("\n");
 
-  return parseClaudeResponse(raw);
+  const result = parseClaudeResponse(raw);
+
+  if (forceFinal && result.type === "clarification") {
+    // Defensive fallback: Claude ignored the forced-final instruction.
+    return {
+      type: "analysis",
+      text: "Here's my best estimate based on what you've told me so far.",
+      confidence: "medium",
+      nutrition: {
+        calories: 400,
+        protein: 15,
+        carbs: 50,
+        fat: 12,
+        fiber: 3,
+        items: [{ name: input.trim().slice(0, 40) || "Meal", calories: 400, protein: 15, carbs: 50, fat: 12 }],
+        confidence: "medium",
+      },
+    };
+  }
+
+  if (forceFinal && result.type === "analysis") {
+    return {
+      ...result,
+      confidence: "medium",
+      nutrition: { ...result.nutrition, confidence: "medium" },
+    };
+  }
+
+  return result;
 }
 
 function parseClaudeResponse(raw: string): AnalyzeResponse {
@@ -123,8 +197,20 @@ function parseClaudeResponse(raw: string): AnalyzeResponse {
     throw new Error("Claude response did not include the expected JSON block");
   }
 
-  const text = raw.slice(0, jsonMatch.index).trim();
   const parsed = JSON.parse(jsonMatch[0]);
+
+  if (parsed.type === "clarification") {
+    if (typeof parsed.question !== "string" || !Array.isArray(parsed.options)) {
+      throw new Error("Claude clarification response was malformed");
+    }
+    return {
+      type: "clarification",
+      question: parsed.question,
+      options: parsed.options.map(String).slice(0, 3),
+    };
+  }
+
+  const text = raw.slice(0, jsonMatch.index).trim();
   const confidence: Confidence = ["high", "medium", "low"].includes(parsed.confidence)
     ? parsed.confidence
     : "low";
@@ -139,5 +225,5 @@ function parseClaudeResponse(raw: string): AnalyzeResponse {
     confidence,
   };
 
-  return { text, nutrition, confidence };
+  return { type: "analysis", text, nutrition, confidence };
 }
