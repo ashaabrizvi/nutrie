@@ -9,6 +9,14 @@ export function getTodayIST(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: APP_TIMEZONE });
 }
 
+/** Shifts a 'YYYY-MM-DD' date string by N days (negative = past). */
+export function shiftDateString(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function getISTHour(): number {
   return Number(
     new Date().toLocaleString("en-US", { timeZone: APP_TIMEZONE, hour: "2-digit", hour12: false }),

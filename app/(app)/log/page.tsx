@@ -1,8 +1,34 @@
-export default function LogPage() {
+import { createClient } from "@/lib/supabase-server";
+import { getTodayIST } from "@/lib/date";
+import LogScreen from "@/components/LogScreen";
+import type { FoodLog } from "@/types";
+
+export default async function LogPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const userId = user!.id;
+  const today = getTodayIST();
+
+  const [{ data: profile }, { data: logs }] = await Promise.all([
+    supabase.from("users").select("language").eq("id", userId).single(),
+    supabase
+      .from("food_logs")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("log_date", today)
+      .eq("is_deleted", false)
+      .order("logged_at", { ascending: true }),
+  ]);
+
   return (
-    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-2 px-6 text-center">
-      <p className="font-heading text-xl font-bold text-text">Coming soon</p>
-      <p className="text-sm text-muted">The log screen is built in a later phase.</p>
-    </div>
+    <LogScreen
+      userId={userId}
+      language={(profile?.language as "en" | "hi") ?? "en"}
+      initialDate={today}
+      initialLogs={(logs ?? []) as FoodLog[]}
+    />
   );
 }
