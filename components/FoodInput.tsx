@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase";
 import { saveUserMemory } from "@/lib/memory";
 import { getTodayIST, getISTHour } from "@/lib/date";
 import NutrieMessage from "@/components/ui/NutrieMessage";
+import VoiceLogger from "@/components/VoiceLogger";
+import PhotoLogger from "@/components/PhotoLogger";
 import type { AnalyzeResponse, ClarificationRound, FoodLog, MealType, NutritionAnalysis } from "@/types";
 
 const MEAL_CHIPS: { meal: MealType; emoji: string; label: string }[] = [
@@ -35,6 +37,7 @@ export default function FoodInput({
   const supabase = createClient();
   const [mealType, setMealType] = useState<MealType>(() => defaultMealForHour(getISTHour()));
   const [input, setInput] = useState("");
+  const [inputType, setInputType] = useState<"text" | "voice" | "photo">("text");
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [conversationHistory, setConversationHistory] = useState<ClarificationRound[]>([]);
@@ -47,11 +50,17 @@ export default function FoodInput({
     setTimeout(() => setNotice(null), duration);
   }
 
-  async function callAnalyze(history: ClarificationRound[]) {
+  async function callAnalyze(history: ClarificationRound[], overrideInput?: string) {
     const res = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input, mealType, userId, language, conversationHistory: history }),
+      body: JSON.stringify({
+        input: overrideInput ?? input,
+        mealType,
+        userId,
+        language,
+        conversationHistory: history,
+      }),
     });
 
     if (!res.ok) {
@@ -62,20 +71,47 @@ export default function FoodInput({
     return (await res.json()) as AnalyzeResponse;
   }
 
-  async function handleAnalyse() {
-    if (!input.trim()) return;
+  async function handleAnalyse(overrideInput?: string) {
+    const analyseInput = overrideInput ?? input;
+    if (!analyseInput.trim()) return;
     setStatus("loading");
     setResult(null);
     setConversationHistory([]);
 
     try {
-      const analysis = await callAnalyze([]);
+      const analysis = await callAnalyze([], overrideInput);
       setResult(analysis);
       setStatus("done");
     } catch (err) {
       setStatus("idle");
       showNotice(err instanceof Error ? err.message : "Something went wrong — try again.");
     }
+  }
+
+  function handleVoiceTranscript(text: string) {
+    setInput(text);
+  }
+
+  async function handleVoiceFinal(text: string) {
+    setInput(text);
+    setInputType("voice");
+    await handleAnalyse(text);
+  }
+
+  function handleVoiceError(message: string) {
+    showNotice(message);
+  }
+
+  function handlePhotoResult(response: AnalyzeResponse, placeholderInput: string) {
+    setInput(placeholderInput);
+    setInputType("photo");
+    setConversationHistory([]);
+    setResult(response);
+    setStatus("done");
+  }
+
+  function handlePhotoError(message: string) {
+    showNotice(message);
   }
 
   async function handleClarify(answer: string) {
@@ -102,7 +138,7 @@ export default function FoodInput({
       .insert({
         user_id: userId,
         raw_input: input.trim(),
-        input_type: "text",
+        input_type: inputType,
         meal_type: mealType,
         food_name: nutrition.items[0]?.name ?? input.trim().slice(0, 40),
         calories: nutrition.calories,
@@ -128,16 +164,13 @@ export default function FoodInput({
       }
 
       setInput("");
+      setInputType("text");
       setResult(null);
       setConversationHistory([]);
       setStatus("idle");
     }
 
     setSaving(false);
-  }
-
-  function showComingSoon(feature: string) {
-    showNotice(`${feature} logging arrives in Phase 5.`, 2000);
   }
 
   return (
@@ -163,7 +196,10 @@ export default function FoodInput({
       <textarea
         rows={3}
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setInputType("text");
+        }}
         placeholder="Tell Nutrie what you ate... e.g. 'Dal chawal with ghee and one chai'"
         className="w-full resize-none rounded-input border border-border bg-surface2 px-4 py-3 text-sm text-text outline-none focus:border-accent"
       />
@@ -173,24 +209,17 @@ export default function FoodInput({
 
       <div className="mt-2 flex items-center justify-between">
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => showComingSoon("Voice")}
-            className="flex h-11 w-11 items-center justify-center rounded-button border border-border text-lg"
-          >
-            🎤
-          </button>
-          <button
-            type="button"
-            onClick={() => showComingSoon("Photo")}
-            className="flex h-11 w-11 items-center justify-center rounded-button border border-border text-lg"
-          >
-            📷
-          </button>
+          <VoiceLogger
+            language={language}
+            onInterimTranscript={handleVoiceTranscript}
+            onFinalTranscript={handleVoiceFinal}
+            onError={handleVoiceError}
+          />
+          <PhotoLogger language={language} onResult={handlePhotoResult} onError={handlePhotoError} />
         </div>
         <button
           type="button"
-          onClick={handleAnalyse}
+          onClick={() => handleAnalyse()}
           disabled={!input.trim() || status === "loading"}
           className="rounded-button bg-accent px-5 py-3 font-heading text-sm font-bold text-black disabled:opacity-60"
         >

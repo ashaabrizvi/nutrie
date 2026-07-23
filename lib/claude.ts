@@ -191,6 +191,39 @@ export async function analyzeFoodWithClaude(
   return result;
 }
 
+export async function analyzeFoodPhoto(
+  imageBase64: string,
+  language: "en" | "hi",
+): Promise<AnalyzeResponse> {
+  const message = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 600,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/jpeg", data: imageBase64 },
+          },
+          {
+            type: "text",
+            text: `User's preferred language: ${language === "hi" ? "Hindi" : "English"}\n\nAnalyse this Indian food photo. Identify every item visible. Estimate realistic portions for an Indian adult. Note if home-cooked (smaller) or restaurant (larger). Use the standard JSON response format.`,
+          },
+        ],
+      },
+    ],
+  });
+
+  const raw = message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+
+  return parseClaudeResponse(raw);
+}
+
 function parseClaudeResponse(raw: string): AnalyzeResponse {
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
